@@ -1,0 +1,6 @@
+package com.psychosocialmonitor.monitor
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()
+
