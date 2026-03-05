@@ -1,27 +1,17 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
 import 'providers/app_provider.dart';
 import 'screens/splash_screen.dart';
 import 'utils/app_theme.dart';
 import 'utils/url_helper.dart';
 
+// Firebase SDK removido — usamos Firestore REST API diretamente.
+// Isso elimina problemas de inicialização no WhatsApp WebView e browsers mobile.
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inicializar Firebase — obrigatório antes de qualquer uso do Firestore
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    if (kDebugMode) debugPrint('✅ Firebase OK');
-  } catch (e) {
-    if (kDebugMode) debugPrint('⚠️ Firebase erro: $e');
-  }
-
-  // Ler parâmetro ?empresa=ID da URL (funciona no GitHub Pages e Firebase Hosting)
+  // Ler parâmetro ?empresa=ID da URL (GitHub Pages e Firebase Hosting)
   final companyIdFromUrl = getUrlParam('empresa');
 
   runApp(

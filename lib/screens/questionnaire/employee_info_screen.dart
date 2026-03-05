@@ -1,10 +1,17 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/response_model.dart';
 import '../../models/company_model.dart';
 import '../../utils/app_theme.dart';
 import 'questionnaire_screen.dart';
+
+// Acessa o Firestore via REST API pública — funciona em qualquer browser,
+// incluindo WhatsApp WebView, sem depender do Firebase JS SDK.
+const _kProjectId = 'rc-engenharia-psicossocial';
+const _kFirestoreBase =
+    'https://firestore.googleapis.com/v1/projects/$_kProjectId/databases/(default)/documents';
 
 class EmployeeInfoScreen extends StatefulWidget {
   final String? prefilledCompanyId;
@@ -21,7 +28,6 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
   final _deptController = TextEditingController();
   final _cityController = TextEditingController();
 
-  // Estado de carregamento
   bool _loading = true;
   String? _loadError;
   List<Company> _companies = [];
@@ -72,7 +78,8 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
     _loadCompanies();
   }
 
-  /// Busca empresas DIRETAMENTE do Firestore — sem depender do Provider
+  /// Busca empresas via Firestore REST API — não usa Firebase SDK.
+  /// Funciona em WhatsApp WebView, Safari, Chrome mobile sem problemas de CORS.
   Future<void> _loadCompanies() async {
     if (!mounted) return;
     setState(() {
@@ -81,13 +88,31 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
     });
 
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('companies')
-          .get()
-          .timeout(const Duration(seconds: 15));
+      final uri = Uri.parse('$_kFirestoreBase/companies');
+      final response = await http.get(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 20));
 
-      final companies = snap.docs
-          .map((doc) => Company.fromMap(doc.data(), doc.id))
+      if (!mounted) return;
+
+      if (response.statusCode != 200) {
+        setState(() {
+          _loading = false;
+          _loadError = 'Erro ao carregar dados (${response.statusCode}). Tente novamente.';
+        });
+        return;
+      }
+
+      final Map<String, dynamic> body = json.decode(response.body);
+      final List<dynamic> docs = body['documents'] ?? [];
+
+      final companies = docs
+          .map((doc) => _parseFirestoreDoc(doc))
+          .whereType<Company>()
           .where((c) => c.isActive)
           .toList();
 
@@ -104,7 +129,9 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
       // Pré-selecionar empresa do link
       Company selected = companies.first;
       if (widget.prefilledCompanyId != null) {
-        final found = companies.where((c) => c.id == widget.prefilledCompanyId).toList();
+        final found = companies
+            .where((c) => c.id == widget.prefilledCompanyId)
+            .toList();
         if (found.isNotEmpty) selected = found.first;
       }
 
@@ -114,23 +141,62 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
         _selectedCompanyId = selected.id;
         _selectedCompanyName = selected.name;
         _cityController.text = selected.city;
-        _selectedState = selected.state;
+        _selectedState = selected.state.isNotEmpty ? selected.state : null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadError = 'Erro ao conectar. Verifique sua internet e tente novamente.';
+        _loadError =
+            'Erro ao conectar com o servidor.\nVerifique sua internet e tente novamente.';
       });
+    }
+  }
+
+  /// Converte um documento Firestore REST em objeto Company
+  Company? _parseFirestoreDoc(Map<String, dynamic> doc) {
+    try {
+      final name = doc['name'] as String; // ex: "projects/.../documents/companies/ID"
+      final id = name.split('/').last;
+      final fields = doc['fields'] as Map<String, dynamic>;
+
+      String _str(String key) {
+        final f = fields[key];
+        if (f == null) return '';
+        return f['stringValue'] as String? ?? '';
+      }
+
+      bool _bool(String key, {bool def = true}) {
+        final f = fields[key];
+        if (f == null) return def;
+        return f['booleanValue'] as bool? ?? def;
+      }
+
+      return Company(
+        id: id,
+        name: _str('name'),
+        cnpj: _str('cnpj'),
+        city: _str('city'),
+        state: _str('state'),
+        sector: _str('sector'),
+        createdAt: DateTime.now(),
+        isActive: _bool('isActive'),
+      );
+    } catch (_) {
+      return null;
     }
   }
 
   void _proceed() {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedCompanyId == null || _selectedSector == null ||
-        _selectedGender == null || _selectedAgeRange == null ||
-        _selectedEducation == null || _selectedContract == null ||
-        _selectedShift == null || _selectedState == null) {
+    if (_selectedCompanyId == null ||
+        _selectedSector == null ||
+        _selectedGender == null ||
+        _selectedAgeRange == null ||
+        _selectedEducation == null ||
+        _selectedContract == null ||
+        _selectedShift == null ||
+        _selectedState == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Por favor, preencha todos os campos obrigatórios.'),
@@ -182,13 +248,13 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
   }
 
   AppBar _buildAppBar() => AppBar(
-    title: const Text('Dados do Funcionário'),
-    backgroundColor: AppTheme.primaryBlue,
-    leading: IconButton(
-      icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-      onPressed: () => Navigator.pop(context),
-    ),
-  );
+        title: const Text('Dados do Funcionário'),
+        backgroundColor: AppTheme.primaryBlue,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -200,7 +266,8 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(color: AppTheme.accentBlue, strokeWidth: 3),
+              CircularProgressIndicator(
+                  color: AppTheme.accentBlue, strokeWidth: 3),
               SizedBox(height: 20),
               Text(
                 'Carregando dados...',
@@ -226,7 +293,8 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.wifi_off_rounded, size: 64, color: AppTheme.gray),
+                const Icon(Icons.wifi_off_rounded,
+                    size: 64, color: AppTheme.gray),
                 const SizedBox(height: 16),
                 const Text(
                   'Sem conexão',
@@ -248,7 +316,8 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
                   icon: const Icon(Icons.refresh),
                   label: const Text('Tentar novamente'),
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 28, vertical: 14),
                   ),
                 ),
               ],
@@ -292,7 +361,7 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
                       _selectedCompanyId = c.id;
                       _selectedCompanyName = c.name;
                       _cityController.text = c.city;
-                      _selectedState = c.state;
+                      _selectedState = c.state.isNotEmpty ? c.state : null;
                     });
                   }
                 },
@@ -319,7 +388,8 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
                         labelText: 'Cidade *',
                         prefixIcon: Icon(Icons.location_city),
                       ),
-                      validator: (v) => v == null || v.isEmpty ? 'Obrigatório' : null,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'Obrigatório' : null,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -358,7 +428,8 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
                   hintText: 'Ex: Analista, Técnico, Supervisor...',
                   prefixIcon: Icon(Icons.work_outline),
                 ),
-                validator: (v) => v == null || v.isEmpty ? 'Informe seu cargo' : null,
+                validator: (v) =>
+                    v == null || v.isEmpty ? 'Informe seu cargo' : null,
               ),
               const SizedBox(height: 14),
               TextFormField(
@@ -373,7 +444,7 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
                 label: 'Gênero *',
                 hint: 'Selecione',
                 value: _selectedGender,
-                items: const ['Masculino','Feminino','Prefiro não informar'],
+                items: const ['Masculino', 'Feminino', 'Prefiro não informar'],
                 itemLabel: (s) => s,
                 onChanged: (s) => setState(() => _selectedGender = s),
               ),
@@ -437,7 +508,8 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
                     max: 40,
                     divisions: 40,
                     activeColor: AppTheme.accentBlue,
-                    onChanged: (v) => setState(() => _yearsInCompany = v.toInt()),
+                    onChanged: (v) =>
+                        setState(() => _yearsInCompany = v.toInt()),
                   ),
                 ],
               ),
@@ -494,7 +566,8 @@ class _SectionHeader extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
-  const _SectionHeader({required this.icon, required this.title, required this.subtitle});
+  const _SectionHeader(
+      {required this.icon, required this.title, required this.subtitle});
 
   @override
   Widget build(BuildContext context) {
@@ -508,7 +581,8 @@ class _SectionHeader extends StatelessWidget {
           ],
         ),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.2)),
+        border:
+            Border.all(color: AppTheme.accentBlue.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [

@@ -1,6 +1,5 @@
 // Implementação Web: lê parâmetros da URL atual do browser
 import 'package:web/web.dart' as web;
-import 'dart:js_interop';
 
 /// Retorna o valor de um parâmetro da URL (hash ou query string)
 String? getUrlParam(String param) {
