@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 import 'providers/app_provider.dart';
 import 'screens/splash_screen.dart';
@@ -18,6 +19,16 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     ).timeout(const Duration(seconds: 10));
     if (kDebugMode) debugPrint('✅ Firebase inicializado com sucesso');
+
+    // Habilitar persistência offline do Firestore (especialmente importante na web)
+    try {
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('⚠️ Firestore persistence: $e');
+    }
   } catch (e) {
     if (kDebugMode) debugPrint('⚠️ Firebase indisponível, usando modo local: $e');
   }

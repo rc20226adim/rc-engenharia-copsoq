@@ -19,11 +19,11 @@ class DataService {
   Future<List<Company>> getCompaniesLocal() => _getCompaniesLocal();
 
   /// Busca empresas do Firestore e atualiza o cache local.
-  /// Lança exceção se Firestore falhar (caller decide o fallback).
+  /// Timeout curto (6s) para não travar a UI; fallback para cache local.
   Future<List<Company>> getCompanies() async {
     try {
       final companies = await FirestoreService.getCompanies()
-          .timeout(const Duration(seconds: 12));
+          .timeout(const Duration(seconds: 6));
       if (companies.isNotEmpty) await _cacheCompaniesLocal(companies);
       return companies;
     } catch (e) {

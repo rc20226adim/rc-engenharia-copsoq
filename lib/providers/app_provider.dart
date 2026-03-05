@@ -35,19 +35,49 @@ class AppProvider extends ChangeNotifier {
     _companiesLoaded = false;
     notifyListeners();
 
-    await _dataService.initDemoData();
-
     // ── FASE 1: cache local (instantâneo) ─────────────────────
-    final cached = await _dataService.getCompaniesLocal();
-    if (cached.isNotEmpty) {
-      _companies = cached;
-      _companiesLoaded = true;
-      _isLoading = false;
-      notifyListeners(); // formulário já pode ser exibido
+    try {
+      final cached = await _dataService.getCompaniesLocal();
+      if (cached.isNotEmpty) {
+        _companies = cached;
+        _companiesLoaded = true;
+        _isLoading = false;
+        notifyListeners(); // formulário já pode ser exibido
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('⚠️ Erro ao ler cache local: $e');
     }
 
-    // ── FASE 2: Firestore em background (não bloqueia UI) ──────
-    _dataService.getCompanies().then((fresh) {
+    // ── FASE 2: Firestore em background com timeout curto ──────
+    // Inicia busca em background sem bloquear a UI
+    _fetchFromFirestoreBackground();
+
+    // Admin login (não bloqueia a inicialização principal)
+    _dataService.isAdminLoggedIn().then((v) {
+      _isAdminLoggedIn = v;
+      notifyListeners();
+    }).catchError((_) {});
+
+    // Respostas em background — só necessário para painel admin
+    _dataService.getResponses().then((r) {
+      _responses = r;
+      notifyListeners();
+    }).catchError((_) {});
+
+    // Garantia: se ainda não marcamos como carregado, marca após 5 segundos
+    // para evitar loading infinito
+    Future.delayed(const Duration(seconds: 5), () {
+      if (!_companiesLoaded) {
+        _companiesLoaded = true;
+        _isLoading = false;
+        notifyListeners();
+      }
+    });
+  }
+
+  Future<void> _fetchFromFirestoreBackground() async {
+    try {
+      final fresh = await _dataService.getCompanies();
       if (fresh.isNotEmpty) {
         _companies = fresh;
         _companiesLoaded = true;
@@ -59,26 +89,14 @@ class AppProvider extends ChangeNotifier {
         _isLoading = false;
         notifyListeners();
       }
-    }).catchError((e) {
+    } catch (e) {
       if (kDebugMode) debugPrint('⚠️ Firestore background error: $e');
       if (!_companiesLoaded) {
         _companiesLoaded = true;
         _isLoading = false;
         notifyListeners();
       }
-    });
-
-    // Admin login (não bloqueia a inicialização principal)
-    _dataService.isAdminLoggedIn().then((v) {
-      _isAdminLoggedIn = v;
-      notifyListeners();
-    });
-
-    // Respostas em background — só necessário para painel admin
-    _dataService.getResponses().then((r) {
-      _responses = r;
-      notifyListeners();
-    }).catchError((_) {});
+    }
   }
 
   /// Recarrega empresas do Firestore (chamado pelo admin panel)
@@ -104,18 +122,19 @@ class AppProvider extends ChangeNotifier {
 
   /// Força reload direto do Firestore (mantido para compatibilidade)
   Future<void> forceReloadCompanies() async {
+    _isLoading = true;
+    notifyListeners();
     try {
       final fresh = await _dataService.getCompanies();
       if (fresh.isNotEmpty) {
         _companies = fresh;
-        _companiesLoaded = true;
-        notifyListeners();
       }
     } catch (e) {
       if (kDebugMode) debugPrint('⚠️ forceReload error: $e');
-      _companiesLoaded = true;
-      notifyListeners();
     }
+    _companiesLoaded = true;
+    _isLoading = false;
+    notifyListeners();
   }
 
   Future<bool> adminLogin(String password) async {

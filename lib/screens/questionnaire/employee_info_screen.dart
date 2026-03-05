@@ -237,7 +237,7 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
               const Icon(Icons.wifi_off_rounded, size: 64, color: AppTheme.gray),
               const SizedBox(height: 16),
               const Text(
-                'Não foi possível carregar',
+                'Carregando dados...',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -246,21 +246,24 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Verifique sua conexão com a internet e tente novamente.',
+                'Aguarde um momento. Se a página não carregar, verifique sua conexão.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14, color: AppTheme.gray),
               ),
               const SizedBox(height: 24),
-              ElevatedButton.icon(
+              const SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  color: AppTheme.accentBlue,
+                ),
+              ),
+              const SizedBox(height: 24),
+              TextButton.icon(
                 onPressed: () => provider.forceReloadCompanies(),
                 icon: const Icon(Icons.refresh),
                 label: const Text('Tentar novamente'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 14,
-                  ),
-                ),
               ),
             ],
           ),
@@ -284,7 +287,7 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
   // ─── Formulário principal ────────────────────────────────────
   Widget _buildForm(List<Company> companies, AppProvider provider) {
     // Banner sutil se ainda buscando dados atualizados do Firestore
-    final bool stillRefreshing = !provider.isLoading == false;
+    final bool stillRefreshing = provider.isLoading;
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundBlue,
