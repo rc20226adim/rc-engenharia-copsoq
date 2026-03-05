@@ -29,7 +29,7 @@ String? getUrlParam(String param) {
 
 /// Gera o link de questionário para uma empresa
 String buildCompanyLink(String baseUrl, String companyId) {
-  return '$baseUrl/#/questionario?empresa=$companyId';
+  return '$baseUrl/?empresa=$companyId';
 }
 
 /// Copia texto para a área de transferência via execCommand (compatível)

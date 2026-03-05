@@ -9,7 +9,7 @@ import 'company_management_screen.dart';
 import 'company_report_screen.dart';
 import '../home_screen.dart';
 
-const _kBaseUrl = 'https://rc-engenharia-psicossocial.web.app';
+const _kBaseUrl = 'https://rc20226adim.github.io/rc-engenharia-copsoq';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});

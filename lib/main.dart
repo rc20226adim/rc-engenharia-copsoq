@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -9,29 +8,21 @@ import 'screens/splash_screen.dart';
 import 'utils/app_theme.dart';
 import 'utils/url_helper.dart';
 
-// Flag global para saber se Firebase foi inicializado
-bool firebaseReady = false;
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inicializar Firebase com tratamento de erro robusto
+  // Inicializar Firebase — obrigatório antes de qualquer uso do Firestore
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
-    ).timeout(const Duration(seconds: 15));
-    firebaseReady = true;
-    if (kDebugMode) debugPrint('✅ Firebase inicializado com sucesso');
+    );
+    if (kDebugMode) debugPrint('✅ Firebase OK');
   } catch (e) {
-    firebaseReady = false;
-    if (kDebugMode) debugPrint('⚠️ Firebase indisponível, usando modo local: $e');
+    if (kDebugMode) debugPrint('⚠️ Firebase erro: $e');
   }
 
-  // Detectar parâmetro ?empresa=ID na URL (deep link para questionário)
+  // Ler parâmetro ?empresa=ID da URL (funciona no GitHub Pages e Firebase Hosting)
   final companyIdFromUrl = getUrlParam('empresa');
-  if (kDebugMode && companyIdFromUrl != null) {
-    debugPrint('🔗 Link direto detectado: empresa=$companyIdFromUrl');
-  }
 
   runApp(
     ChangeNotifierProvider(
