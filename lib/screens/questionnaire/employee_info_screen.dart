@@ -176,17 +176,18 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
     final provider = context.watch<AppProvider>();
     final companies = provider.companies;
 
-    // Ainda inicializando (sem cache e sem Firestore ainda)
+    // Ainda carregando (sem cache e Firestore ainda respondendo)
     if (!provider.companiesLoaded) {
-      return _buildLoading('Preparando o questionário...');
+      return _buildLoading('Carregando dados da empresa...');
     }
 
-    // Carregou mas nenhuma empresa encontrada
+    // Carregou mas nenhuma empresa — mostra loading com retry
+    // (pode ter falhado a conexão)
     if (companies.isEmpty) {
       return _buildNoCompany(provider);
     }
 
-    // ✅ Formulário disponível — seja via cache ou Firestore
+    // ✅ Formulário disponível
     return _buildForm(companies, provider);
   }
 
@@ -217,14 +218,20 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
               ),
               textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 8),
+            const Text(
+              'Aguarde...',
+              style: TextStyle(fontSize: 13, color: AppTheme.gray),
+            ),
           ],
         ),
       ),
     );
   }
 
-  // ─── Tela de erro / sem empresa ─────────────────────────────
+  // ─── Tela quando empresas não carregaram ─────────────────────
   Widget _buildNoCompany(AppProvider provider) {
+    final isRetrying = provider.isLoading;
     return Scaffold(
       backgroundColor: AppTheme.backgroundBlue,
       appBar: _buildAppBar(),
@@ -234,11 +241,15 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.wifi_off_rounded, size: 64, color: AppTheme.gray),
+              Icon(
+                isRetrying ? Icons.cloud_sync : Icons.wifi_off_rounded,
+                size: 64,
+                color: AppTheme.gray,
+              ),
               const SizedBox(height: 16),
-              const Text(
-                'Carregando dados...',
-                style: TextStyle(
+              Text(
+                isRetrying ? 'Conectando...' : 'Sem conexão',
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: AppTheme.darkGray,
@@ -246,25 +257,32 @@ class _EmployeeInfoScreenState extends State<EmployeeInfoScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Aguarde um momento. Se a página não carregar, verifique sua conexão.',
+                'Não foi possível carregar os dados.\nVerifique sua conexão e tente novamente.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14, color: AppTheme.gray),
               ),
-              const SizedBox(height: 24),
-              const SizedBox(
-                width: 32,
-                height: 32,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  color: AppTheme.accentBlue,
+              const SizedBox(height: 28),
+              if (isRetrying)
+                const SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    color: AppTheme.accentBlue,
+                  ),
+                )
+              else
+                ElevatedButton.icon(
+                  onPressed: () => provider.forceReloadCompanies(),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Tentar novamente'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 28,
+                      vertical: 14,
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              TextButton.icon(
-                onPressed: () => provider.forceReloadCompanies(),
-                icon: const Icon(Icons.refresh),
-                label: const Text('Tentar novamente'),
-              ),
             ],
           ),
         ),

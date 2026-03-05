@@ -4,12 +4,14 @@ import '../models/company_model.dart';
 import '../models/response_model.dart';
 
 class FirestoreService {
-  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  static FirebaseFirestore get _db => FirebaseFirestore.instance;
 
   // ─── EMPRESAS ───────────────────────────────────────────────
 
   static Future<List<Company>> getCompanies() async {
-    final snap = await _db.collection('companies').get();
+    final snap = await _db
+        .collection('companies')
+        .get(const GetOptions(source: Source.serverAndCache));
     return snap.docs
         .map((doc) => Company.fromMap(doc.data(), doc.id))
         .toList();

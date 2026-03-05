@@ -12,7 +12,7 @@ class AppProvider extends ChangeNotifier {
   bool _isAdminLoggedIn = false;
   bool _isLoading = false;
 
-  // true assim que empresas estiverem disponíveis (cache ou Firestore)
+  // true assim que tentamos carregar (cache ou Firestore)
   bool _companiesLoaded = false;
   String? _error;
 
@@ -27,82 +27,69 @@ class AppProvider extends ChangeNotifier {
     _init();
   }
 
-  /// Inicialização em 2 fases:
-  /// FASE 1 (imediata) — lê cache local → formulário fica disponível em <100ms
-  /// FASE 2 (background) — busca Firestore → atualiza lista silenciosamente
+  /// Inicialização:
+  /// 1) Lê cache local imediatamente
+  /// 2) Se cache vazio, aguarda até 8s pelo Firestore
+  /// 3) Se tudo falhar, marca como carregado com lista vazia (permite retry manual)
   Future<void> _init() async {
     _isLoading = true;
     _companiesLoaded = false;
     notifyListeners();
 
-    // ── FASE 1: cache local (instantâneo) ─────────────────────
+    // ── FASE 1: cache local (instantâneo, < 50ms) ─────────────
     try {
       final cached = await _dataService.getCompaniesLocal();
       if (cached.isNotEmpty) {
         _companies = cached;
         _companiesLoaded = true;
         _isLoading = false;
-        notifyListeners(); // formulário já pode ser exibido
+        notifyListeners();
+        if (kDebugMode) debugPrint('✅ Empresas carregadas do cache: ${cached.length}');
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('⚠️ Erro ao ler cache local: $e');
+      if (kDebugMode) debugPrint('⚠️ Erro ao ler cache: $e');
     }
 
-    // ── FASE 2: Firestore em background com timeout curto ──────
-    // Inicia busca em background sem bloquear a UI
-    _fetchFromFirestoreBackground();
+    // ── FASE 2: Firestore em background ───────────────────────
+    _fetchFirestoreCompanies();
 
-    // Admin login (não bloqueia a inicialização principal)
+    // Admin e respostas em background
     _dataService.isAdminLoggedIn().then((v) {
       _isAdminLoggedIn = v;
       notifyListeners();
     }).catchError((_) {});
 
-    // Respostas em background — só necessário para painel admin
     _dataService.getResponses().then((r) {
       _responses = r;
       notifyListeners();
     }).catchError((_) {});
-
-    // Garantia: se ainda não marcamos como carregado, marca após 5 segundos
-    // para evitar loading infinito
-    Future.delayed(const Duration(seconds: 5), () {
-      if (!_companiesLoaded) {
-        _companiesLoaded = true;
-        _isLoading = false;
-        notifyListeners();
-      }
-    });
   }
 
-  Future<void> _fetchFromFirestoreBackground() async {
+  Future<void> _fetchFirestoreCompanies() async {
     try {
-      final fresh = await _dataService.getCompanies();
+      final fresh = await _dataService.getCompanies()
+          .timeout(const Duration(seconds: 10));
       if (fresh.isNotEmpty) {
         _companies = fresh;
-        _companiesLoaded = true;
-        _isLoading = false;
-        notifyListeners();
-      } else if (!_companiesLoaded) {
-        // Firestore retornou vazio e cache também estava vazio
-        _companiesLoaded = true;
-        _isLoading = false;
-        notifyListeners();
+        if (kDebugMode) debugPrint('✅ Empresas carregadas do Firestore: ${fresh.length}');
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('⚠️ Firestore background error: $e');
-      if (!_companiesLoaded) {
-        _companiesLoaded = true;
-        _isLoading = false;
-        notifyListeners();
-      }
+      if (kDebugMode) debugPrint('⚠️ Firestore falhou: $e');
+    } finally {
+      // SEMPRE marca como carregado ao final — nunca deixa travado
+      _companiesLoaded = true;
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
-  /// Recarrega empresas do Firestore (chamado pelo admin panel)
+  /// Recarrega empresas — chamado pelo admin panel e pelo botão "Tentar novamente"
   Future<void> loadCompanies() async {
+    _isLoading = true;
+    notifyListeners();
     try {
-      final fresh = await _dataService.getCompanies();
+      final fresh = await _dataService.getCompanies()
+          .timeout(const Duration(seconds: 10));
       _companies = fresh;
     } catch (e) {
       if (kDebugMode) debugPrint('⚠️ loadCompanies error: $e');
@@ -110,6 +97,7 @@ class AppProvider extends ChangeNotifier {
       if (cached.isNotEmpty) _companies = cached;
     }
     _companiesLoaded = true;
+    _isLoading = false;
     notifyListeners();
   }
 
@@ -120,12 +108,14 @@ class AppProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// Força reload direto do Firestore (mantido para compatibilidade)
+  /// Força reload direto do Firestore (botão "Tentar novamente")
   Future<void> forceReloadCompanies() async {
     _isLoading = true;
+    _companiesLoaded = false;
     notifyListeners();
     try {
-      final fresh = await _dataService.getCompanies();
+      final fresh = await _dataService.getCompanies()
+          .timeout(const Duration(seconds: 12));
       if (fresh.isNotEmpty) {
         _companies = fresh;
       }

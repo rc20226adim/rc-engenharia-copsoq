@@ -3,12 +3,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
 import 'providers/app_provider.dart';
 import 'screens/splash_screen.dart';
 import 'utils/app_theme.dart';
 import 'utils/url_helper.dart';
+
+// Flag global para saber se Firebase foi inicializado
+bool firebaseReady = false;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,19 +19,11 @@ void main() async {
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
-    ).timeout(const Duration(seconds: 10));
+    ).timeout(const Duration(seconds: 15));
+    firebaseReady = true;
     if (kDebugMode) debugPrint('✅ Firebase inicializado com sucesso');
-
-    // Habilitar persistência offline do Firestore (especialmente importante na web)
-    try {
-      FirebaseFirestore.instance.settings = const Settings(
-        persistenceEnabled: true,
-        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-      );
-    } catch (e) {
-      if (kDebugMode) debugPrint('⚠️ Firestore persistence: $e');
-    }
   } catch (e) {
+    firebaseReady = false;
     if (kDebugMode) debugPrint('⚠️ Firebase indisponível, usando modo local: $e');
   }
 
