@@ -11,90 +11,46 @@ class AppProvider extends ChangeNotifier {
   List<QuestionnaireResponse> _responses = [];
   bool _isAdminLoggedIn = false;
   bool _isLoading = false;
-
-  // true assim que tentamos carregar (cache ou Firestore)
   bool _companiesLoaded = false;
-  String? _error;
 
   List<Company> get companies => _companies;
   List<QuestionnaireResponse> get responses => _responses;
   bool get isAdminLoggedIn => _isAdminLoggedIn;
   bool get isLoading => _isLoading;
   bool get companiesLoaded => _companiesLoaded;
-  String? get error => _error;
 
   AppProvider() {
     _init();
   }
 
-  /// Inicialização:
-  /// 1) Lê cache local imediatamente
-  /// 2) Se cache vazio, aguarda até 8s pelo Firestore
-  /// 3) Se tudo falhar, marca como carregado com lista vazia (permite retry manual)
   Future<void> _init() async {
-    _isLoading = true;
-    _companiesLoaded = false;
-    notifyListeners();
-
-    // ── FASE 1: cache local (instantâneo, < 50ms) ─────────────
-    try {
-      final cached = await _dataService.getCompaniesLocal();
-      if (cached.isNotEmpty) {
-        _companies = cached;
-        _companiesLoaded = true;
-        _isLoading = false;
-        notifyListeners();
-        if (kDebugMode) debugPrint('✅ Empresas carregadas do cache: ${cached.length}');
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint('⚠️ Erro ao ler cache: $e');
-    }
-
-    // ── FASE 2: Firestore em background ───────────────────────
-    _fetchFirestoreCompanies();
-
-    // Admin e respostas em background
+    // Carregar admin status
     _dataService.isAdminLoggedIn().then((v) {
       _isAdminLoggedIn = v;
       notifyListeners();
     }).catchError((_) {});
 
-    _dataService.getResponses().then((r) {
-      _responses = r;
-      notifyListeners();
-    }).catchError((_) {});
+    // Carregar respostas para o painel admin
+    _loadResponsesBackground();
   }
 
-  Future<void> _fetchFirestoreCompanies() async {
+  Future<void> _loadResponsesBackground() async {
     try {
-      final fresh = await _dataService.getCompanies()
-          .timeout(const Duration(seconds: 10));
-      if (fresh.isNotEmpty) {
-        _companies = fresh;
-        if (kDebugMode) debugPrint('✅ Empresas carregadas do Firestore: ${fresh.length}');
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint('⚠️ Firestore falhou: $e');
-    } finally {
-      // SEMPRE marca como carregado ao final — nunca deixa travado
-      _companiesLoaded = true;
-      _isLoading = false;
+      _responses = await _dataService.getResponses();
       notifyListeners();
-    }
+    } catch (_) {}
   }
 
-  /// Recarrega empresas — chamado pelo admin panel e pelo botão "Tentar novamente"
+  /// Carrega empresas — usado pelo painel admin
   Future<void> loadCompanies() async {
     _isLoading = true;
     notifyListeners();
     try {
       final fresh = await _dataService.getCompanies()
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 12));
       _companies = fresh;
     } catch (e) {
       if (kDebugMode) debugPrint('⚠️ loadCompanies error: $e');
-      final cached = await _dataService.getCompaniesLocal();
-      if (cached.isNotEmpty) _companies = cached;
     }
     _companiesLoaded = true;
     _isLoading = false;
@@ -108,23 +64,8 @@ class AppProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// Força reload direto do Firestore (botão "Tentar novamente")
   Future<void> forceReloadCompanies() async {
-    _isLoading = true;
-    _companiesLoaded = false;
-    notifyListeners();
-    try {
-      final fresh = await _dataService.getCompanies()
-          .timeout(const Duration(seconds: 12));
-      if (fresh.isNotEmpty) {
-        _companies = fresh;
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint('⚠️ forceReload error: $e');
-    }
-    _companiesLoaded = true;
-    _isLoading = false;
-    notifyListeners();
+    await loadCompanies();
   }
 
   Future<bool> adminLogin(String password) async {
@@ -200,8 +141,7 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<List<QuestionnaireResponse>> getResponsesByCompany(
-      String companyId) async {
+  Future<List<QuestionnaireResponse>> getResponsesByCompany(String companyId) async {
     return _dataService.getResponsesByCompany(companyId);
   }
 
@@ -209,8 +149,7 @@ class AppProvider extends ChangeNotifier {
     return _dataService.getCompanyStats(companyId);
   }
 
-  Future<Map<String, dynamic>> getSectorStats(
-      String companyId, String sector) async {
+  Future<Map<String, dynamic>> getSectorStats(String companyId, String sector) async {
     return _dataService.getSectorStats(companyId, sector);
   }
 
